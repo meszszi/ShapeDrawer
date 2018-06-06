@@ -7,6 +7,10 @@ from itertools import chain
 import argparse
 import sys
 
+# Raised when there is an attempt to parse unregonized color format.
+class InvalidColorException(Exception):
+    pass
+
 class ImageManager():
     
     '''Represents an area on which all shapes from an input file are drawn'''
@@ -23,7 +27,7 @@ class ImageManager():
         
     def draw(self, shape):
         
-        shape.draw(self._surface)
+        shape.drawOn(self._surface)
             
     def display(self):
         
@@ -42,7 +46,7 @@ class AbstractShape(ABC):
         self.color = color
         
     @abstractmethod
-    def draw(self, surface):
+    def drawOn(self, surface):
         pass
     
     
@@ -56,7 +60,7 @@ class Point(AbstractShape):
         self.x_coord = x
         self.y_coord = y
 
-    def draw(self, surface):
+    def drawOn(self, surface):
         
         surface.point((self.x_coord, self.y_coord), fill=self.color)
         
@@ -72,7 +76,7 @@ class Circle(AbstractShape):
         self.y_coord = y
         self.radius = radius
 
-    def draw(self, surface):
+    def drawOn(self, surface):
         
         surface.ellipse((self.x_coord - self.radius,
                          self.y_coord - self.radius,
@@ -93,7 +97,7 @@ class Rectangle(AbstractShape):
         self.height = height
         self.width = width
 
-    def draw(self, surface):
+    def drawOn(self, surface):
         
         surface.rectangle((self.x_coord - (self.width // 2), 
                            self.y_coord - (self.height // 2), 
@@ -102,13 +106,26 @@ class Rectangle(AbstractShape):
                           fill=self.color)
         
         
-class Square(Rectangle):
+class Square(AbstractShape):
     
     '''Square shape'''
     
     def __init__(self, x, y, size, color):
         
-        super().__init__(x, y, size, size, color)
+        super().__init__(color)
+        self.x_coord = x
+        self.y_coord = y
+        self.size = size
+        
+    def drawOn(self, surface):
+        
+        half_size = self.size // 2
+        
+        surface.rectangle((self.x_coord - half_size, 
+                           self.y_coord - half_size, 
+                           self.x_coord + half_size, 
+                           self.y_coord + half_size),
+                          fill=self.color)
         
         
 class Polygon(AbstractShape):
@@ -120,7 +137,7 @@ class Polygon(AbstractShape):
         super().__init__(color)
         self.points = points
         
-    def draw(self, surface):
+    def drawOn(self, surface):
         
         surface.polygon(list(chain(*self.points)), fill=self.color)
     
@@ -129,6 +146,8 @@ class FileParser():
 
     '''Used for parsing all the data from the input file'''
     
+    
+    # dict mapping shape string name to constructor for all drawable shapes
     _FIGURE_CONSTRUCTORS = {
         'point': Point,
         'circle': Circle,
@@ -137,6 +156,7 @@ class FileParser():
         'polygon': Polygon
     }
     
+    
     def __init__(self, json_file):
         
         with open(json_file, 'r') as file:
@@ -144,6 +164,8 @@ class FileParser():
             raw_dict = json.load(file)
             
             self.color_palette = raw_dict.get('Palette', {})
+            
+            # Parses all color values in palette.
             for name, value in self.color_palette.items():
                 self.color_palette[name] = FileParser._parse_color(value)
             
@@ -160,7 +182,9 @@ class FileParser():
             raw_figures = raw_dict['Figures']
             self.figures = [self._parse_figure(figure_dict) for figure_dict in raw_figures]
 
-        
+            
+    # Static method used to parse color into usable type.
+    # Accepts both #?????? and (?,?,?) style formats.
     def _parse_color(string_color):
         
         if string_color.startswith('#'):
@@ -170,14 +194,18 @@ class FileParser():
             (r, g, b) = findall('[0-9]+', string_color)
             return int(r), int(g), int(b)
 
-        return None
+        raise InvalidColorException(string_color)
     
 
     def _parse_figure(self, figure_dict):
         
         figure_type = figure_dict.pop('type')
         raw_color = figure_dict.get('color', self.screen_parameters['fg_color'])
+        
+        # If color is one of the palette keys, it is read from palette.
+        # Otherwise it is parsed with _parse_color helper method.
         figure_dict['color'] = self.color_palette.get(raw_color, FileParser._parse_color(raw_color))
+        
         constructor = FileParser._FIGURE_CONSTRUCTORS[figure_type]
         
         return constructor(**figure_dict)
