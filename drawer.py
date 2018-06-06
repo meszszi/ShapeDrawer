@@ -7,9 +7,6 @@ from itertools import chain
 import argparse
 import sys
 
-# Raised when there is an attempt to parse unregonized color format.
-class InvalidColorException(Exception):
-    pass
 
 class ImageManager():
     
@@ -185,6 +182,7 @@ class FileParser():
             
     # Static method used to parse color into usable type.
     # Accepts both #?????? and (?,?,?) style formats.
+    # If wrong format is detected, None is returned.
     def _parse_color(string_color):
         
         if string_color.startswith('#'):
@@ -194,7 +192,7 @@ class FileParser():
             (r, g, b) = findall('[0-9]+', string_color)
             return int(r), int(g), int(b)
 
-        raise InvalidColorException(string_color)
+        return None
     
 
     def _parse_figure(self, figure_dict):
